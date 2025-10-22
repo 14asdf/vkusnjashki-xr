@@ -4,8 +4,6 @@ import {
   Scene,
   Box3,
   Vector3,
-  Euler,
-  Quaternion,
   Mesh,
   MeshStandardMaterial,
   PlaneGeometry,
@@ -33,6 +31,7 @@ import {
   ROOM_DEPTH,
   OBJECTS_DISTANCE_FROM_CAMERA,
   MODELS,
+  CAMERA_FOV,
 } from '@/3d/constants';
 import {
   TXRControllerEvent,
@@ -40,6 +39,7 @@ import {
   TEngineCallbacks,
 } from '@/3d/engine/types';
 import { IEngine } from '@/3d/engine/interfaces';
+import { CameraState } from '@/3d/engine/CameraState';
 
 export class Engine implements IEngine {
   private camera!: PerspectiveCamera;
@@ -51,19 +51,10 @@ export class Engine implements IEngine {
   private controls!: OrbitControls;
   private group!: Group;
   private loadedModels: Group[] = [];
-
-  private savedCameraPosition = new Vector3();
-  private savedCameraRotation = new Euler();
-  private savedCameraQuaternion = new Quaternion();
-  private savedControlsTarget = new Vector3();
-  private savedCameraFov = 50;
-  private savedCameraZoom = 1;
-  private savedCameraAspect = 1;
-
+  private cameraState = new CameraState();
   private intersected: Object3D[] = [];
   private loader = new GLTFLoader();
   private lastHoveredObjectName: string | null = null;
-
   private fallingObjects: Map<
     Object3D,
     { velocity: number; isFalling: boolean }
@@ -78,7 +69,6 @@ export class Engine implements IEngine {
     minZ: -ROOM_DEPTH / 2,
     maxZ: ROOM_DEPTH / 2,
   };
-
   private lastButtonStates: Map<number, boolean[]> = new Map();
 
   constructor(
@@ -167,7 +157,7 @@ export class Engine implements IEngine {
     );
 
     newModel.position.set(constrainedX, constrainedY, constrainedZ);
-    newModel.name = `Model_${randomIndex + 1}_${Date.now()}`;
+    newModel.name = `${modelTemplate.name}_${randomIndex + 1}_${Date.now()}`;
 
     this.group.add(newModel);
 
@@ -182,7 +172,7 @@ export class Engine implements IEngine {
     this.renderer.setAnimationLoop(null);
     this.renderer.dispose();
     this.controls.dispose();
-    window.removeEventListener('resize', this.onWindowResize);
+    window.removeEventListener('resize', this.onResize);
   }
 
   private createScene(): void {
@@ -192,7 +182,7 @@ export class Engine implements IEngine {
 
   private createCamera(): void {
     this.camera = new PerspectiveCamera(
-      50,
+      CAMERA_FOV,
       window.innerWidth / window.innerHeight,
       0.1,
       100
@@ -320,39 +310,17 @@ export class Engine implements IEngine {
     this.container.appendChild(this.renderer.domElement);
 
     this.renderer.xr.addEventListener('sessionstart', () => {
-      this.savedCameraPosition.copy(this.camera.position);
-      this.savedCameraRotation.copy(this.camera.rotation);
-      this.savedCameraQuaternion.copy(this.camera.quaternion);
-      this.savedControlsTarget.copy(this.controls.target);
-
-      this.savedCameraFov = this.camera.fov;
-      this.savedCameraZoom = this.camera.zoom;
-      this.savedCameraAspect = this.camera.aspect;
-
+      this.cameraState.save(this.camera, this.controls);
       this.controls.enabled = false;
-
       this.callbacks.onXRStart();
     });
 
     this.renderer.xr.addEventListener('sessionend', () => {
       this.controls.enabled = true;
-
-      this.camera.position.copy(this.savedCameraPosition);
-      this.camera.rotation.copy(this.savedCameraRotation);
-      this.camera.quaternion.copy(this.savedCameraQuaternion);
-
-      this.camera.fov = this.savedCameraFov;
-      this.camera.zoom = this.savedCameraZoom;
-      this.camera.aspect = this.savedCameraAspect;
-
+      this.cameraState.restore(this.camera, this.controls);
       this.camera.updateProjectionMatrix();
-
-      this.controls.target.copy(this.savedControlsTarget);
-
       this.camera.updateMatrixWorld(true);
-
       this.controls.update();
-
       this.callbacks.onXREnd();
 
       if (this.controller1.userData.selected !== undefined) {
@@ -379,6 +347,10 @@ export class Engine implements IEngine {
 
       this.fallingObjects.clear();
       this.lastButtonStates.clear();
+
+      requestAnimationFrame(() => {
+        this.onResize();
+      });
     });
   }
 
@@ -393,6 +365,7 @@ export class Engine implements IEngine {
       ['selectend', this.onSelectEnd.bind(this)],
       ['disconnected', this.onControllerDisconnected.bind(this)],
       ['connected', this.onControllerConnected.bind(this)],
+
     ];
 
     [this.controller1, this.controller2].forEach((controller) => {
@@ -437,14 +410,14 @@ export class Engine implements IEngine {
 
     this.raycaster = new Raycaster();
 
-    window.addEventListener('resize', this.onWindowResize.bind(this));
+    window.addEventListener('resize', this.onResize.bind(this));
   }
 
   private startRendering(): void {
     this.renderer.setAnimationLoop(this.animate.bind(this));
   }
 
-  private onWindowResize = (): void => {
+  private onResize = (): void => {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);

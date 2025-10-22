@@ -1,6 +1,5 @@
-const ROOM_WIDTH = 8;
-const ROOM_HEIGHT = 3;
-const ROOM_DEPTH = 8;
-const OBJECTS_DISTANCE_FROM_CAMERA = 3;
+export const ROOM_WIDTH = 8;
+export const ROOM_HEIGHT = 3;
+export const ROOM_DEPTH = 8;
+export const OBJECTS_DISTANCE_FROM_CAMERA = 3;
 
-export { ROOM_WIDTH, ROOM_HEIGHT, ROOM_DEPTH, OBJECTS_DISTANCE_FROM_CAMERA };
